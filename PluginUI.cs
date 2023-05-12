@@ -360,6 +360,28 @@ namespace OBSPlugin
                 UIErrorCount++;
                 Config.Save();
             }
+            try
+            {
+                UpdateHotbar();
+            }
+            catch (Exception e)
+            {
+                PluginLog.Error("Error Updating Hotbar UI: {0}", e);
+                Config.HotbarBlur = false;
+                UIErrorCount++;
+                Config.Save();
+            }
+            try
+            {
+                UpdateCastBar();
+            }
+            catch (Exception e)
+            {
+                PluginLog.Error("Error Updating CastBar UI: {0}", e);
+                Config.CastBarBlur = false;
+                UIErrorCount++;
+                Config.Save();
+            }
             if (UIErrorCount > 1000)
             {
                 var errMsg = "More than 1000 UI errors encountered, UI detection is turned off. " +
@@ -709,6 +731,29 @@ namespace OBSPlugin
             UpdateBlur(GetBlurFromNode(childNode, "FriendList"));
         }
 
+        private unsafe void UpdateHotbar()
+        {
+            if (!Config.HotbarBlur || !Config.BlurredHotbars.Any()) return;
+            foreach(var i in Config.BlurredHotbars)
+            {
+                var suffix = (i - 1).ToString("00");
+                var hotbarAddress = Plugin.GameGui.GetAddonByName($"_ActionBar{(suffix == "00" ? string.Empty : suffix)}", 1);
+                if (hotbarAddress == IntPtr.Zero) return;
+                var hotbar = (AtkUnitBase*)hotbarAddress;
+                var childNode = hotbar->UldManager.NodeList[0];
+                UpdateBlur(GetBlurFromNode(childNode, $"Hotbar{suffix}"));
+            }
+        }
+        private unsafe void UpdateCastBar()
+        {
+            if (!Config.CastBarBlur) return;
+            var castbarAddress = Plugin.GameGui.GetAddonByName("_CastBar", 1);
+            if (castbarAddress == IntPtr.Zero) return;
+            var castbar = (AtkUnitBase*)castbarAddress;
+            var childNode = castbar->UldManager.NodeList[1];
+            UpdateBlur(GetBlurFromNode(childNode, "CastBar"));
+        }
+
         // TODO IDK how to create the list in UI, maybe i can write a command
         private unsafe void UpdateCustomAddon(String addonName)
         {
@@ -778,7 +823,7 @@ namespace OBSPlugin
                 Config.Save();
             }
             if (ImGui.IsItemHovered())
-                ImGui.SetTooltip("Draw the blurred content with a vkye boundary.");
+                ImGui.SetTooltip("Draw the blurred content with a blue boundary.");
             if (ImGui.InputText("Source Name", ref Config.SourceName, 128))
             {
                 Config.Save();
@@ -799,6 +844,30 @@ namespace OBSPlugin
                 {
                     Blur chatLogBlur = null;
                     if (BlurDict.TryGetValue("ChatLog", out chatLogBlur))
+                    {
+                        chatLogBlur.Enabled = false;
+                        PluginLog.Debug("Turn off {0}", chatLogBlur.Name);
+                        BlurItemsToAdd.Add((Blur)chatLogBlur.Clone());
+                    }
+                    if (BlurDict.TryGetValue("ChatLogPanel_0", out chatLogBlur))
+                    {
+                        chatLogBlur.Enabled = false;
+                        PluginLog.Debug("Turn off {0}", chatLogBlur.Name);
+                        BlurItemsToAdd.Add((Blur)chatLogBlur.Clone());
+                    }
+                    if (BlurDict.TryGetValue("ChatLogPanel_1", out chatLogBlur))
+                    {
+                        chatLogBlur.Enabled = false;
+                        PluginLog.Debug("Turn off {0}", chatLogBlur.Name);
+                        BlurItemsToAdd.Add((Blur)chatLogBlur.Clone());
+                    }
+                    if (BlurDict.TryGetValue("ChatLogPanel_2", out chatLogBlur))
+                    {
+                        chatLogBlur.Enabled = false;
+                        PluginLog.Debug("Turn off {0}", chatLogBlur.Name);
+                        BlurItemsToAdd.Add((Blur)chatLogBlur.Clone());
+                    }
+                    if (BlurDict.TryGetValue("ChatLogPanel_3", out chatLogBlur))
                     {
                         chatLogBlur.Enabled = false;
                         PluginLog.Debug("Turn off {0}", chatLogBlur.Name);
@@ -894,6 +963,50 @@ namespace OBSPlugin
                 }
                 Config.Save();
             }
+            if (ImGui.Checkbox("Hotbar", ref Config.HotbarBlur))
+            {
+                if (!Config.HotbarBlur)
+                {
+                    var hotbars = BlurDict.Where(x => x.Key.Length >= 8 && x.Key[..6] == "Hotbar");
+                    if (hotbars.Any())
+                    {
+                        PluginLog.Debug("Turn off HotbarBlur");
+                        foreach(var i in hotbars)
+                        {
+                            i.Value.Enabled = false;
+                            BlurItemsToAdd.Add((Blur)i.Value.Clone());
+                        }
+                    }
+                }
+                Config.Save();
+            }
+            if (Config.HotbarBlur)
+            {
+                ImGui.SameLine();
+                var numbers = string.Join(",", Config.BlurredHotbars.Select(x => x.ToString()));
+                ImGui.InputTextWithHint(string.Empty, "hotbar number splitted by comma", ref numbers, 32);
+                if (ImGui.IsItemHovered())
+                    ImGui.SetTooltip("Adding hotbar will effect instantly, but remove need to re-enable hotbar blur to make it change.");
+                try
+                {
+                    Config.BlurredHotbars = numbers.Trim().Replace("，", ",").Split(",").Select(x => int.Parse(x)).ToArray();
+                }
+                catch { }
+            }
+            if (ImGui.Checkbox("CastBar", ref Config.CastBarBlur))
+            {
+                if (!Config.CastBarBlur)
+                {
+                    Blur castbarBlur = null;
+                    if (BlurDict.TryGetValue("CastBar", out castbarBlur))
+                    {
+                        castbarBlur.Enabled = false;
+                        PluginLog.Debug("Turn off {0}", castbarBlur.Name);
+                        BlurItemsToAdd.Add((Blur)castbarBlur.Clone());
+                    }
+                }
+                Config.Save();
+            }
             /*
             if (ImGui.Checkbox("NamePlate", ref Config.NamePlateBlur))
             {
@@ -928,17 +1041,20 @@ namespace OBSPlugin
         {
             // ImGui.Text("This plugin is still WIP, lot of functions are still in development.");
 
-            ImGui.Text("You need to install two plugins in your OBS for this plugin to work:");
+            ImGui.Text("You need to install two plugins in your OBS for this plugin to work.");
 
+            ImGui.Separator();
+
+            ImGui.Text("For OBS v27:");
             ImGui.BulletText("");
             ImGui.SameLine();
-            if (ImGui.Button("StreamFX"))
+            if (ImGui.Button("StreamFX 0.11.1"))
             {
                 try
                 {
                     Process.Start(new ProcessStartInfo()
                     {
-                        FileName = "https://github.com/Xaymar/obs-StreamFX/releases/latest",
+                        FileName = "https://github.com/Xaymar/obs-StreamFX/releases/tag/0.11.1",
                         UseShellExecute = true,
                     });
                 }
@@ -952,13 +1068,13 @@ namespace OBSPlugin
 
             ImGui.BulletText("");
             ImGui.SameLine();
-            if (ImGui.Button("OBS-websocket"))
+            if (ImGui.Button("OBS-websocket 4.9.1"))
             {
                 try
                 {
                     Process.Start(new ProcessStartInfo()
                     {
-                        FileName = "https://github.com/Palakis/obs-websocket/releases/latest",
+                        FileName = "https://github.com/obsproject/obs-websocket/releases/tag/4.9.1",
                         UseShellExecute = true,
                     });
                 }
@@ -968,7 +1084,54 @@ namespace OBSPlugin
                 }
             }
             ImGui.SameLine();
-            ImGui.Text("You need to set a password and provide in the #Connection tab.");
+            ImGui.Text("You need to set a password and provide it in the #Connection tab.");
+
+            ImGui.Separator();
+
+            ImGui.Text("For OBS v28+:");
+            ImGui.BulletText("");
+            ImGui.SameLine();
+            if (ImGui.Button("StreamFX 0.12.0 alpha"))
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo()
+                    {
+                        FileName = "https://github.com/Xaymar/obs-StreamFX/releases/tag/0.12.0a117",
+                        UseShellExecute = true,
+                    });
+                }
+                catch (Exception ex)
+                {
+                    PluginLog.Error(ex, "Could not open StreamFX url");
+                }
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("You probably need to uninstall & delete the old plugin if you installed 0.11.x in OBS 27.");
+            ImGui.SameLine();
+            ImGui.Text("Just download and install.");
+
+            ImGui.BulletText("");
+            ImGui.SameLine();
+            if (ImGui.Button("OBS-websocket 4.9.1-compat"))
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo()
+                    {
+                        FileName = "https://github.com/obsproject/obs-websocket/releases/tag/4.9.1-compat",
+                        UseShellExecute = true,
+                    });
+                }
+                catch (Exception ex)
+                {
+                    PluginLog.Error(ex, "Could not open OBS-websocket url");
+                }
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("The latest version of the build-in obs-websocket plugin in OBS 28 lacks some of the APIs used in this plugin and therefore will be pending untill fully supported.");
+            ImGui.SameLine();
+            ImGui.Text("You need to set a password and provide it in the #Connection tab.");
 
             ImGui.NewLine();
             ImGui.Text("If you encountered any bugs please submit issues in");
@@ -988,6 +1151,9 @@ namespace OBSPlugin
                     PluginLog.Error(ex, "Could not open OBS-websocket url");
                 }
             }
+
+
+
         }
 
         private void DrawStream()
@@ -1059,7 +1225,7 @@ namespace OBSPlugin
                 var terriName = Plugin.Data.GetExcelSheet<TerritoryType>().GetRow(terriIdx).Map.Value.PlaceName.Value.Name;
                 curDir = Path.Combine(curDir, terriName);
             }
-            
+
             Plugin.obs.SetRecordingFolder(curDir);
         }
 
@@ -1075,7 +1241,7 @@ namespace OBSPlugin
                 var terriName = Plugin.Data.GetExcelSheet<TerritoryType>().GetRow(terriIdx).Map.Value.PlaceName.Value.Name;
                 filenameFormat += "_" + terriName;
             }
-            
+
             Plugin.obs.SetFilenameFormatting(filenameFormat);
         }
 
@@ -1174,13 +1340,24 @@ namespace OBSPlugin
                 ImGui.SetTooltip("If selected, will automatically stop recording when combat is over in ");
             ImGui.SameLine();
             ImGui.SetNextItemWidth(-1);
-            if (ImGui.DragInt("", ref Config.StopRecordOnCombatDelay, 1, 0, 60, "%d second(s)"))
+            if (ImGui.DragInt("", ref Config.StopRecordOnCombatDelay, 1, 0, 300, "%d second(s)"))
             {
                 Config.Save();
             }
             if (ImGui.IsItemHovered())
                 ImGui.SetTooltip("Delay of \"Stop Recording On Combat Over\" in seconds.");
-
+            if (Config.StopRecordOnCombat && ImGui.Checkbox("Don't Stop Recording in cutscene", ref Config.DontStopInCutscene))
+            {
+                Config.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("If selected, will not stop recording if player is viewing cutscenes.");
+            if (Config.StopRecordOnCombat && ImGui.Checkbox("Cancel Stop Recording On Combat Resume", ref Config.CancelStopRecordOnResume))
+            {
+                Config.Save();
+            }
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("If selected, will not stop recording if another starts before stop countdown.");
         }
 
         internal void Dispose()
@@ -1196,6 +1373,6 @@ namespace OBSPlugin
             }
             isThreadRunning = false;
         }
-    
+
     }
 }
